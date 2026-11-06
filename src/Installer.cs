@@ -69,7 +69,7 @@ namespace NovaMap
         public static string Describe(string tag)
         {
             var parts = new List<string>(tag.Split('+'));
-            var names = new Dictionary<string, string> { { "dark", "тёмная" }, { "light", "светлая" }, { "winter", "зима" }, { "halloween", "хэллоуин" } };
+            var names = new Dictionary<string, string> { { "dark", "тёмная" }, { "light", "светлая" }, { "winter", "зима" }, { "halloween", "хэллоуин" }, { "sakura", "сакура" } };
             string t = parts[0].Replace("_relief", "");
             var outp = new List<string> { "тема «" + (names.ContainsKey(t) ? names[t] : t) + "»" };
             if (parts.Contains("relief") || parts[0].EndsWith("_relief")) outp.Add("рельеф");
@@ -229,8 +229,8 @@ namespace NovaMap
         CheckBox gridBox, labelsBox;
         Dictionary<string, Image> previews = new Dictionary<string, Image>();
         string gameDir;
-        static readonly string[] ThemeIds = { "dark", "light", "winter", "halloween" };
-        static readonly string[] ThemeNames = { "Тёмная", "Светлая", "Зима", "Хэллоуин" };
+        static readonly string[] ThemeIds = { "dark", "light", "winter", "halloween", "sakura" };
+        static readonly string[] ThemeNames = { "Тёмная", "Светлая", "Зима", "Хэллоуин", "Сакура" };
 
         public MainForm()
         {
@@ -243,21 +243,21 @@ namespace NovaMap
             BackColor = Bg;
             ForeColor = Color.White;
             Font = new Font("Segoe UI", 9.5f);
-            ClientSize = new Size(774, 660);
+            ClientSize = new Size(972, 660);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             var title = new Label { Text = "Кастомная карта GTA V", Font = new Font("Segoe UI Semibold", 20f), AutoSize = true, Location = new Point(28, 20) };
-            var sub = new Label { Text = "Большая карта и мини-карта: темы, подписи районов и дорог, сетка квадратов.", ForeColor = Muted, AutoSize = false, Size = new Size(720, 22), Location = new Point(30, 64) };
+            var sub = new Label { Text = "Большая карта и мини-карта: темы, подписи районов и дорог, сетка квадратов.", ForeColor = Muted, AutoSize = false, Size = new Size(912, 22), Location = new Point(30, 64) };
             Controls.Add(title); Controls.Add(sub);
 
             var pl = new Label { Text = "Папка GTA V", ForeColor = Muted, AutoSize = true, Location = new Point(28, 100) };
-            pathBox = new TextBox { ReadOnly = true, Location = new Point(30, 122), Size = new Size(614, 26), BackColor = Color.FromArgb(44, 45, 50), ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
+            pathBox = new TextBox { ReadOnly = true, Location = new Point(30, 122), Size = new Size(812, 26), BackColor = Color.FromArgb(44, 45, 50), ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
             browseBtn = MakeButton("Обзор…", false);
-            browseBtn.Location = new Point(654, 120); browseBtn.Size = new Size(90, 29);
+            browseBtn.Location = new Point(852, 120); browseBtn.Size = new Size(90, 29);
             browseBtn.Click += delegate { Browse(); };
             Controls.Add(pl); Controls.Add(pathBox); Controls.Add(browseBtn);
 
-            statusLbl = new Label { AutoSize = false, Size = new Size(714, 22), Location = new Point(30, 156), ForeColor = Muted };
+            statusLbl = new Label { AutoSize = false, Size = new Size(912, 22), Location = new Point(30, 156), ForeColor = Muted };
             Controls.Add(statusLbl);
 
             for (int i = 0; i < ThemeIds.Length; i++)
@@ -281,16 +281,16 @@ namespace NovaMap
             UpdatePreviews();
 
             installBtn = MakeButton("Установить", true);
-            installBtn.Location = new Point(30, 526); installBtn.Size = new Size(350, 42);
+            installBtn.Location = new Point(30, 526); installBtn.Size = new Size(449, 42);
             installBtn.Click += delegate { Run(true); };
             restoreBtn = MakeButton("Вернуть оригинальную карту", false);
-            restoreBtn.Location = new Point(394, 526); restoreBtn.Size = new Size(350, 42);
+            restoreBtn.Location = new Point(493, 526); restoreBtn.Size = new Size(449, 42);
             restoreBtn.Click += delegate { Run(false); };
             Controls.Add(installBtn); Controls.Add(restoreBtn);
 
-            bar = new ProgressBar { Location = new Point(30, 578), Size = new Size(714, 6), Style = ProgressBarStyle.Marquee, Visible = false };
-            logLbl = new Label { AutoSize = false, Size = new Size(714, 22), Location = new Point(30, 588), ForeColor = Color.White };
-            var note = new Label { Text = "Перед установкой закройте игру и RAGE:MP. После обновления GTA V или проверки файлов в Steam установку нужно повторить.", ForeColor = Muted, Font = new Font("Segoe UI", 8.25f), AutoSize = false, Size = new Size(714, 34), Location = new Point(30, 614) };
+            bar = new ProgressBar { Location = new Point(30, 578), Size = new Size(912, 6), Style = ProgressBarStyle.Marquee, Visible = false };
+            logLbl = new Label { AutoSize = false, Size = new Size(912, 22), Location = new Point(30, 588), ForeColor = Color.White };
+            var note = new Label { Text = "Перед установкой закройте игру и RAGE:MP. После обновления GTA V или проверки файлов в Steam установку нужно повторить.", ForeColor = Muted, Font = new Font("Segoe UI", 8.25f), AutoSize = false, Size = new Size(912, 34), Location = new Point(30, 614) };
             Controls.Add(bar); Controls.Add(logLbl); Controls.Add(note);
 
             Shown += delegate

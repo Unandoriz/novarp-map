@@ -80,8 +80,31 @@ namespace NovaMap
         public float[] LayerZ;
         public List<Theme> Themes = new List<Theme>();
         public Dictionary<string, Dictionary<string, TilePlan>> Combos = new Dictionary<string, Dictionary<string, TilePlan>>();
+        public Dictionary<int, Dictionary<string, TilePlan>> Extras = new Dictionary<int, Dictionary<string, TilePlan>>();   // [theme][tile]: decor, one host
 
         static string Str(BinaryReader r) { int n = r.ReadByte(); return Encoding.ASCII.GetString(r.ReadBytes(n)); }
+
+        static void ReadPieces(BinaryReader r, Host host)
+        {
+            int np = r.ReadUInt16();
+            for (int k = 0; k < np; k++)
+            {
+                var pc = new Piece { Layer = r.ReadByte() };
+                int nv = r.ReadUInt16(), ni = r.ReadUInt16();
+                pc.XY = new float[nv * 2];
+                for (int v = 0; v < nv * 2; v++) pc.XY[v] = r.ReadSingle();
+                pc.Idx = new ushort[ni];
+                for (int v = 0; v < ni; v++) pc.Idx[v] = r.ReadUInt16();
+                host.Pieces.Add(pc);
+            }
+        }
+
+        static int[] ReadOrder(BinaryReader r)
+        {
+            var order = new int[r.ReadByte()];
+            for (int k = 0; k < order.Length; k++) order[k] = r.ReadUInt16();
+            return order;
+        }
 
         public static VectorPlan Load(byte[] zlibData)
         {
@@ -89,7 +112,7 @@ namespace NovaMap
             var p = new VectorPlan();
             using (var r = new BinaryReader(new MemoryStream(raw)))
             {
-                if (Encoding.ASCII.GetString(r.ReadBytes(4)) != "NVPL" || r.ReadUInt32() != 4) throw new Exception("bad vector plan");
+                if (Encoding.ASCII.GetString(r.ReadBytes(4)) != "NVPL" || r.ReadUInt32() != 5) throw new Exception("bad vector plan");
                 int nl = r.ReadByte();
                 p.LayerZ = new float[nl];
                 for (int l = 0; l < nl; l++) p.LayerZ[l] = r.ReadSingle();
@@ -113,30 +136,33 @@ namespace NovaMap
                     for (int i = 0; i < ntiles; i++)
                     {
                         string name = Str(r);
-                        var tp = new TilePlan();
-                        tp.Order = new int[r.ReadByte()];
-                        for (int k = 0; k < tp.Order.Length; k++) tp.Order[k] = r.ReadUInt16();
+                        var tp = new TilePlan { Order = ReadOrder(r) };
                         int nh = r.ReadUInt16();
-                        var hosts = tp.Hosts;
                         for (int h = 0; h < nh; h++)
                         {
                             var host = new Host { Index = r.ReadUInt16() };
-                            int np = r.ReadUInt16();
-                            for (int k = 0; k < np; k++)
-                            {
-                                var pc = new Piece { Layer = r.ReadByte() };
-                                int nv = r.ReadUInt16(), ni = r.ReadUInt16();
-                                pc.XY = new float[nv * 2];
-                                for (int v = 0; v < nv * 2; v++) pc.XY[v] = r.ReadSingle();
-                                pc.Idx = new ushort[ni];
-                                for (int v = 0; v < ni; v++) pc.Idx[v] = r.ReadUInt16();
-                                host.Pieces.Add(pc);
-                            }
-                            hosts.Add(host);
+                            ReadPieces(r, host);
+                            tp.Hosts.Add(host);
                         }
                         tiles[name] = tp;
                     }
                     p.Combos[grid + "_" + labels] = tiles;
+                }
+                int ne = r.ReadByte();
+                for (int e = 0; e < ne; e++)
+                {
+                    int theme = r.ReadByte(), ntiles = r.ReadUInt16();
+                    var tiles = new Dictionary<string, TilePlan>();
+                    for (int i = 0; i < ntiles; i++)
+                    {
+                        string name = Str(r);
+                        var tp = new TilePlan { Order = ReadOrder(r) };
+                        var host = new Host { Index = r.ReadUInt16() };
+                        ReadPieces(r, host);
+                        tp.Hosts.Add(host);
+                        tiles[name] = tp;
+                    }
+                    p.Extras[theme] = tiles;
                 }
             }
             return p;
@@ -346,17 +372,33 @@ namespace NovaMap
                 }
             }
             var res = new Rsc7.Res { Version = vanilla.Version, SysFlags = vanilla.SysFlags, GfxFlags = vanilla.GfxFlags, Gfx = vanilla.Gfx };
-            TilePlan plan;
-            if (!Combos[(grid ? 1 : 0) + "_" + (labels ? 1 : 0)].TryGetValue(tileName, out plan) || plan.Hosts.Count == 0)
+            TilePlan plan, extra = null;
+            Combos[(grid ? 1 : 0) + "_" + (labels ? 1 : 0)].TryGetValue(tileName, out plan);
+            Dictionary<string, TilePlan> themeExtras;
+            if (Extras.TryGetValue(theme, out themeExtras)) themeExtras.TryGetValue(tileName, out extra);
+            if ((plan == null || plan.Hosts.Count == 0) && extra == null)
             {
                 res.Sys = s;
                 return res;
             }
+            int[] order = (plan != null ? plan : extra).Order;
+            // the theme's decor goes before the zone fills of its host
+            var add = new Dictionary<int, List<Piece>>();
+            if (extra != null) add[extra.Hosts[0].Index] = new List<Piece>(extra.Hosts[0].Pieces);
+            if (plan != null)
+                foreach (var hp in plan.Hosts)
+                {
+                    List<Piece> list;
+                    if (!add.TryGetValue(hp.Index, out list)) add[hp.Index] = list = new List<Piece>();
+                    list.AddRange(hp.Pieces);
+                }
             var hosts = Hosts(s);
             var built = new List<Built>();
-            foreach (var hp in plan.Hosts)
+            foreach (int index in order)
             {
-                var h = hosts[hp.Index];
+                List<Piece> pieces;
+                if (!add.TryGetValue(index, out pieces)) continue;
+                var h = hosts[index];
                 int n = h.N, m = h.M;
                 var vdat = new MemoryStream();
                 vdat.Write(s, h.Vptr, n * 16);
@@ -364,7 +406,7 @@ namespace NovaMap
                 for (int k = 0; k < m; k++) idx.Add(BitConverter.ToUInt16(s, h.Iptr + 2 * k));
                 int bse = n;
                 var w = new BinaryWriter(vdat);
-                foreach (var pc in hp.Pieces)
+                foreach (var pc in pieces)
                 {
                     float z = LayerZ[pc.Layer];
                     var cc = th.LayerColours[pc.Layer];
@@ -384,7 +426,7 @@ namespace NovaMap
                 byte[] vb = vdat.ToArray();
                 double[] mn, mx;
                 MinMax(vb, 0, bse, out mn, out mx);
-                built.Add(new Built { H = h, Index = hp.Index, V = vb, I = ib, Nv = bse, Ni = idx.Count, Mn = mn, Mx = mx });
+                built.Add(new Built { H = h, Index = index, V = vb, I = ib, Nv = bse, Ni = idx.Count, Mn = mn, Mx = mx });
             }
             var R = new Relayout(s.Length, vanilla.SysFlags);
             // the resource root must stay at offset 0, i.e. at the start of the first (largest) page:
@@ -393,7 +435,6 @@ namespace NovaMap
             foreach (var b in built) kNew = Math.Min(kNew, Math.Min(Relayout.PageClass(b.V.Length), Relayout.PageClass(b.I.Length)));
             int root = kNew < R.FirstClass() ? R.Alloc(new byte[RootSize], kNew) : -1;
             foreach (var b in built) { b.Bv = R.Alloc(b.V); b.Bi = R.Alloc(b.I); }
-            int[] order = plan.Order;
             int bModels = R.Alloc(new byte[8 * order.Length]);
             int piOld = P(U64(s, 0x08));
             int est = R.Pages() + 1;

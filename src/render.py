@@ -52,9 +52,19 @@ THEMES = {
         legend_bg=(14, 8, 20), legend_text=(255, 200, 120),
         border=(196, 96, 255), grid=(255, 172, 64), grid_halo=(14, 8, 20),
     ),
+    "sakura": dict(
+        ocean_deep=(66, 51, 61), ocean_shore=(66, 51, 61), ocean_cloud=(66, 51, 61),
+        land=(237, 190, 193), land_low=(237, 190, 193), built=(205, 156, 166),
+        road=(112, 80, 94), major=(66, 44, 54), shade_strength=0.4,
+        zone_fill=(228, 58, 58), zone_fill_a=0.42, zone_line=(232, 72, 72), zone_glow=None,
+        label=(255, 255, 255), label_stroke=(58, 40, 50), label_water=(240, 214, 220),
+        legend_bg=(66, 51, 61), legend_text=(255, 255, 255),
+        border=(150, 40, 110), grid=(74, 52, 62), grid_halo=(250, 232, 235),
+        rim=(247, 210, 214), blossom=(224, 165, 180), blossom_deep=(208, 140, 162),     # sakura.py
+    ),
 }
 
-VARIANTS = ["dark", "light", "winter", "halloween"]      # relief variants ("_relief") are off for now
+VARIANTS = ["dark", "light", "winter", "halloween", "sakura"]      # relief variants ("_relief") are off for now
 
 
 def value_noise(scale, seed, h=H, w=W):
@@ -124,6 +134,16 @@ def base(theme, L, relief):
         s = T["shade_strength"] * (1 - smoothstep(0.12, 0.4, urban) * 0.85)
         g = g * np.clip(1 + (shade - 0.66) * s * 1.6, 0.74, 1.16)[..., None]
 
+    rim = None
+    if "rim" in T:      # decor polygons, shared with the vector tiles
+        import sakura
+        geo = sakura.shapes()
+        rim = sakura.mask(geo["rim"])
+        water = mix(water, col(T["rim"]), rim)
+        g = mix(g, col(T["rim"]), rim)
+        g = mix(g, col(T["blossom"]), sakura.mask(geo["blossom"]))
+        g = mix(g, col(T["blossom_deep"]), sakura.mask(geo["blossom_deep"]))
+
     g = mix(g, col(T["built"]), built * 0.9)
     g = mix(g, col(T["road"]), road)
     g = mix(g, col(T["major"]), major)
@@ -133,6 +153,8 @@ def base(theme, L, relief):
     va = np.clip(cv2.resize(va, (W, H), interpolation=cv2.INTER_LINEAR) * 1.4, 0, 1)
     ocean = smoothstep(0.3, 0.7, L["ocean"].astype(np.float32))
     alpha = land + (1 - land) * (ocean * va + (1 - ocean))
+    if rim is not None:
+        alpha = np.maximum(alpha, rim)
     return np.clip(mix(water, g, land), 0, 255), alpha
 
 

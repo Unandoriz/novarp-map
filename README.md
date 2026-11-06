@@ -1,7 +1,7 @@
 # novarp-map
 
 Кастомная карта GTA V для RP-сервера NOVA RP (RAGE:MP): большая карта в меню паузы и радар.
-Четыре темы (тёмная, светлая, зима, хэллоуин), зоны охоты, пунктир границ городов,
+Пять тем (тёмная, светлая, зима, хэллоуин, сакура), зоны охоты, пунктир границ городов,
 по желанию — подписи районов и дорог и сетка квадратов 1×1 км. Ставится установщиком
 `NovaMap_Installer.exe`, который патчит архивы игры (`update.rpf`, `x64e.rpf`) и умеет
 откатывать их байт в байт. Инструкция для игроков — [dist/README.txt](dist/README.txt).
@@ -33,6 +33,7 @@ shapely mapbox-earcut`, шрифт Bahnschrift (есть в Windows 10/11).
 3. Проверки: `python src/checks/validate_tiles.py`, сверка C# с эталоном —
    `rpftool vectest … build\vector_expected\<вариант> files\game\minimap_ydd`.
 4. Установщик: `powershell -File src\build_installer.ps1` → `dist\NovaMap_Installer.exe`.
+5. Тест на копиях файлов игры (установка, сверка с эталоном, откат): `powershell -File src\checks\test_install.ps1`.
 
 ## Как устроена векторная карта
 

@@ -7,7 +7,8 @@ theme and options. This module prepares everything theme/option dependent:
   * extra geometry per tile and option combo (grid x labels): hunting zones, city borders,
     grid lines + cell ids, district / road labels (the same glyph outlines as the texture
     overlays, textgeo.py), all clipped to the tile's cell;
-  * the draw order of the tile.
+  * the draw order of the tile;
+  * theme decor (sakura.py), stored once per theme instead of per combo.
 
 Draw order. Every vanilla drawable is one model with one geometry, and the game sorts the
 drawables of the visible tiles by their bounds relative to the camera, which reshuffles our
@@ -39,16 +40,18 @@ from shapely import affinity
 from ydd_zones import (BASE, P, u64, read_rsc, drawable_info, vanilla_geometries, zone_shapes, px_to_world)
 from layers import X0, Y0, MPP, smoothstep
 import grid as grid_mod
+import sakura
 import textgeo
 
 MAX_V, MAX_I = 4096, 16384       # per extended geometry: vertex buffer <= 64 KB, index buffer <= 32 KB
-THEME_ORDER = ["dark", "light", "winter", "halloween"]
+THEME_ORDER = ["dark", "light", "winter", "halloween", "sakura"]
 # Vanilla heights: sea -12, land 0, buildings 6, roads 12. Ours: zone fill between land and
 # buildings, the rest above the roads (only the low layers are depth sorted in game; the order
 # of the models / triangles decides the rest, see above).
-LAYERS = ["zone_fill", "zone_line", "border", "grid_line", "grid_text", "grid_halo", "label", "label_halo", "label_water"]
+LAYERS = ["zone_fill", "zone_line", "border", "grid_line", "grid_text", "grid_halo", "label", "label_halo", "label_water",
+          "rim", "blossom", "blossom_deep"]
 LZ = {"zone_fill": 3.0, "zone_line": 18.0, "border": 18.0, "grid_line": 24.0, "grid_halo": 30.0, "grid_text": 36.0,
-      "label_halo": 30.0, "label": 36.0, "label_water": 36.0, "relief": 1.0}
+      "label_halo": 30.0, "label": 36.0, "label_water": 36.0, "rim": 0.5, "blossom": 1.0, "blossom_deep": 1.5, "relief": 1.0}
 CELL_X0, CELL_W, CELL_Y0, CELL_H = -4500.0, 1175.0, 8000.0, 1388.0   # minimap_A_B: x cell A, y cell B (down)
 
 
@@ -84,7 +87,8 @@ def layer_colours(T):
     zf = land + (np.array(T["zone_fill"], float) - land) * T["zone_fill_a"] * 1.1
     gl = land + (np.array(T["grid"], float) - land) * 0.45
     out = {"zone_fill": zf, "zone_line": T["zone_line"], "border": T["border"], "grid_line": gl, "grid_text": T["grid"],
-           "grid_halo": T["grid_halo"], "label": T["label"], "label_halo": T["label_stroke"], "label_water": T["label_water"]}
+           "grid_halo": T["grid_halo"], "label": T["label"], "label_halo": T["label_stroke"], "label_water": T["label_water"],
+           "rim": T.get("rim", land), "blossom": T.get("blossom", land), "blossom_deep": T.get("blossom_deep", land)}
     return {k: tuple(int(round(float(c))) for c in v) for k, v in out.items()}
 
 
@@ -227,6 +231,15 @@ def clip_pieces(parts, region):
     return out
 
 
+def decor_pieces(parts, region, land):
+    """Theme decor of a tile: the rim also lies on the sea, the patches only on the vanilla land."""
+    out = []
+    for shape, layer in parts:
+        sh = shape.intersection(region)
+        out += clip_pieces([(sh if layer == "rim" else sh.intersection(land), layer)], region)
+    return out
+
+
 def unary_union_polys(g):
     from shapely.ops import unary_union
     return unary_union([p for p in getattr(g, "geoms", [g]) if p.geom_type in ("Polygon", "MultiPolygon")])
@@ -317,8 +330,13 @@ def draw_order(hosts):
 
 
 def build_plan():
-    """combos[(grid, labels)][tile] = dict(order=[drawable index], hosts=[(drawable index, pieces)])."""
+    """(combos, extras). combos[(grid, labels)][tile] = dict(order=[drawable index],
+    hosts=[(drawable index, pieces)]); extras[theme][tile] = dict(order, host, pieces): decor of
+    the theme, drawn before the zone fills of the same host."""
     units = overlay_units()
+    decor = [(_world(sh), layer) for layer, sh in sakura.shapes().items()]
+    decor.sort(key=lambda e: LZ[e[1]])
+    extras = {"sakura": {}}
     files = sorted(glob.glob("files/game/minimap_ydd/minimap_*.ydd"))
     tiles = {os.path.basename(p): read_rsc(p)["sys"] for p in files}
     sea_only = {n for n, s in tiles.items() if draw_order(drawable_info_indexed(s)) is None}
@@ -338,6 +356,11 @@ def build_plan():
             if grp == "zones":     # an opaque fill over water would look like land: fills stay on the land
                 parts = [(sh.intersection(land) if layer == "zone_fill" else sh, layer) for sh, layer in parts]
             clipped.append((grp, nm, clip_pieces(parts, box)))
+        extra = None
+        if zone is not None:
+            pcs = decor_pieces(decor, box, land)
+            if pcs:
+                extra = extras["sakura"][name] = dict(order=order, host=zone["index"], pieces=pcs)
         stats = []
         for (grid, lab), plan in combos.items():
             take = {"zones", "borders"} | ({"lines", "ids"} if grid else set()) | ({"labels"} if lab else set())
@@ -348,7 +371,10 @@ def build_plan():
                 add.setdefault(zone["index"], []).extend(fills)
             if rest:
                 add.setdefault(over["index"], []).extend(rest)
-            for hi, pcs in add.items():
+            check = dict(add)
+            if extra:
+                check[extra["host"]] = extra["pieces"] + check.get(extra["host"], [])
+            for hi, pcs in check.items():
                 h = hosts[[x["index"] for x in hosts].index(hi)]
                 nv = h["n"] + sum(len(pc["v"]) for pc in pcs)
                 ni = h["m"] + sum(3 * len(pc["t"]) for pc in pcs)
@@ -357,8 +383,9 @@ def build_plan():
             if add:
                 plan[name] = dict(order=order, hosts=[(hi, add[hi]) for hi in sorted(add, key=order.index)])
             stats.append("g%dl%d %d+%d" % (grid, lab, sum(len(pc["v"]) for pc in fills), sum(len(pc["v"]) for pc in rest)))
-        print(name, "order", order, "zone host", zone["index"] if zone else None, "overlay host", over["index"], " ".join(stats))
-    return combos
+        print(name, "order", order, "zone host", zone["index"] if zone else None, "overlay host", over["index"], " ".join(stats),
+              "decor %d" % sum(len(pc["v"]) for pc in extra["pieces"]) if extra else "")
+    return combos, extras
 
 
 def land_area(s, hosts):
@@ -477,7 +504,7 @@ class Relayout:
 
 
 # ------------------------------------------------------------------ apply (reference for the installer)
-def apply_plan(path, tile_plan, theme_i, relief, land_lut, water_lut, colours):
+def apply_plan(path, tile_plan, theme_i, relief, land_lut, water_lut, colours, extra=None):
     r = read_rsc(path)
     s = bytearray(r["sys"])
     # 1) recolour vanilla vertices through the theme LUTs
@@ -488,13 +515,19 @@ def apply_plan(path, tile_plan, theme_i, relief, land_lut, water_lut, colours):
             lum = (s[o + 12] + s[o + 13] + s[o + 14]) // 3
             c = water_lut[lum] if z < 0 else land_lut[lum]
             s[o + 12], s[o + 13], s[o + 14] = int(c[0]), int(c[1]), int(c[2])
-    if not tile_plan:
+    if not tile_plan and not extra:
         return dict(sys=bytes(s), sysflags=r["sysflags"], gfxflags=r["gfxflags"], version=r["version"])
     hosts = {h["index"]: h for h in drawable_info_indexed(s)}
-    order = tile_plan["order"]
+    order = (tile_plan or extra)["order"]
+    add = dict(tile_plan["hosts"]) if tile_plan else {}
+    if extra:
+        add[extra["host"]] = extra["pieces"] + add.get(extra["host"], [])
     # 2) extended geometries as new blocks
     built = []
-    for index, pieces in tile_plan["hosts"]:
+    for index in order:
+        if index not in add:
+            continue
+        pieces = add[index]
         h = hosts[index]
         n, m = h["n"], h["m"]
         vdat = bytearray(s[h["vptr"]:h["vptr"] + n * 16])
@@ -585,10 +618,18 @@ def apply_plan(path, tile_plan, theme_i, relief, land_lut, water_lut, colours):
 
 
 # ------------------------------------------------------------------ binary export
-def export(combos, path):
+def _pack_pieces(b, pieces):
+    for pc in pieces:
+        nidx = len(pc["t"]) * 3
+        b += struct.pack("<BHH", LAYERS.index(pc["layer"]), len(pc["v"]), nidx)
+        b += np.asarray(pc["v"], np.float32).tobytes()
+        b += np.asarray([i for t in pc["t"] for i in t], np.uint16).tobytes()
+
+
+def export(combos, extras, path):
     from render import THEMES
     b = bytearray(b"NVPL")
-    b += struct.pack("<IB", 4, len(LAYERS))
+    b += struct.pack("<IB", 5, len(LAYERS))
     for layer in LAYERS:
         b += struct.pack("<f", LZ[layer])
     b += struct.pack("<B", len(THEME_ORDER))
@@ -613,11 +654,16 @@ def export(combos, path):
             b += struct.pack("<H", len(tp["hosts"]))
             for index, pieces in tp["hosts"]:
                 b += struct.pack("<HH", index, len(pieces))
-                for pc in pieces:
-                    nidx = len(pc["t"]) * 3
-                    b += struct.pack("<BHH", LAYERS.index(pc["layer"]), len(pc["v"]), nidx)
-                    b += np.asarray(pc["v"], np.float32).tobytes()
-                    b += np.asarray([i for t in pc["t"] for i in t], np.uint16).tobytes()
+                _pack_pieces(b, pieces)
+    b += struct.pack("<B", len(extras))
+    for th, tiles in sorted(extras.items()):
+        b += struct.pack("<BH", THEME_ORDER.index(th), len(tiles))
+        for name, ex in sorted(tiles.items()):
+            nb = name.encode("ascii")
+            b += struct.pack("<B", len(nb)) + nb
+            b += struct.pack("<B", len(ex["order"])) + struct.pack("<%dH" % len(ex["order"]), *ex["order"])
+            b += struct.pack("<HH", ex["host"], len(ex["pieces"]))
+            _pack_pieces(b, ex["pieces"])
     open(path, "wb").write(zlib.compress(bytes(b), 9))
     print("plan:", len(b), "bytes raw ->", os.path.getsize(path), "compressed")
 
@@ -625,11 +671,11 @@ def export(combos, path):
 def main():
     import shutil
     from render import THEMES
-    combos = build_plan()
-    export(combos, "build/vector_plan.bin")
+    combos, extras = build_plan()
+    export(combos, extras, "build/vector_plan.bin")
     # expected outputs for the installer self-check (two variants)
     shutil.rmtree("build/vector_expected", ignore_errors=True)
-    for th, grid, lab in (("dark", 0, 0), ("halloween", 1, 1)):
+    for th, grid, lab in (("dark", 0, 0), ("halloween", 1, 1), ("sakura", 0, 0), ("sakura", 1, 1)):
         T = THEMES[th]
         ll, wl = luts(T)
         out = "build/vector_expected/%s_%d_%d" % (th, grid, lab)
@@ -637,7 +683,8 @@ def main():
         plan = combos[(grid, lab)]
         for p in sorted(glob.glob("files/game/minimap_ydd/minimap_*.ydd")):
             name = os.path.basename(p)
-            res = apply_plan(p, plan.get(name, []), THEME_ORDER.index(th), False, ll, wl, layer_colours(T))
+            res = apply_plan(p, plan.get(name, []), THEME_ORDER.index(th), False, ll, wl, layer_colours(T),
+                             extras.get(th, {}).get(name))
             open(os.path.join(out, name + ".sys"), "wb").write(res["sys"] + struct.pack("<I", res["sysflags"]))
         print("expected", out)
 

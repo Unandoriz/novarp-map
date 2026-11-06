@@ -1,4 +1,4 @@
-# Builds dist\NovaMap_Installer.exe (single file: code + magic.dat + base textures of the 4 themes
+# Builds dist\NovaMap_Installer.exe (single file: code + magic.dat + base textures of the 5 themes
 # + label/grid overlays + vector plan + previews). Overlays and vector tiles are composed at install time.
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -9,7 +9,7 @@ foreach ($o in @("overlay_labels", "overlay_labels_small", "overlay_grid", "over
     $res += "-resource:build\$o.png,$o.png"
 }
 Get-ChildItem "build\installer\preview_*.jpg" | ForEach-Object { $res += "-resource:$($_.FullName),$($_.Name)" }
-foreach ($t in @("dark", "light", "winter", "halloween")) {
+foreach ($t in @("dark", "light", "winter", "halloween", "sakura")) {
     Get-ChildItem "dist\ytd\$t\*.ytd" | ForEach-Object { $res += "-resource:$($_.FullName),$t.$($_.Name)" }
 }
 & $csc -nologo -optimize -target:winexe "-out:dist\NovaMap_Installer.exe" `
