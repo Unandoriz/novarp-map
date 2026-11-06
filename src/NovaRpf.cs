@@ -1,5 +1,6 @@
 // RPF7 (GTA V) archive reading / patching.
-// Crypto and archive layout ported from CodeWalker (MIT, (c) Neodymium / dexyfex).
+// Crypto ported from CodeWalker (GTACrypto.cs, GTAKeys.cs: MIT, (c) Neodymium); archive handling
+// follows its RpfFile.cs ((c) dexyfex). See THIRD_PARTY_NOTICES.md.
 // Written for the C# 5 compiler that ships with .NET Framework 4.x (csc.exe).
 using System;
 using System.Collections.Generic;

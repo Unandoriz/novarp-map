@@ -60,5 +60,6 @@
 
 Благодарности
 -------------
-Работа с архивами RPF основана на коде CodeWalker (dexyfex, Neodymium),
-лицензия MIT. Сжатие текстур — texconv (Microsoft DirectXTex).
+Работа с архивами RPF опирается на CodeWalker: шифрование основано на коде
+Neodymium (лицензия MIT), формат архивов и magic.dat — на работе dexyfex.
+Сжатие текстур — texconv (Microsoft DirectXTex).
