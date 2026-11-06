@@ -2,7 +2,7 @@
 
 ## Шифрование архивов GTA V
 
-Классы `GtaKeys` и `Crypto` в `src/NovaRpf.cs` основаны на файлах `GTACrypto.cs` и `GTAKeys.cs`
+Шифрование в установщике основано на файлах `GTACrypto.cs` и `GTAKeys.cs`
 из [CodeWalker](https://github.com/dexyfex/CodeWalker), которые распространяются на этих условиях:
 
 ```
@@ -29,8 +29,8 @@ THE SOFTWARE.
 
 ## Формат архивов RPF и `magic.dat`
 
-Работа с форматом RPF в `src/NovaRpf.cs` сделана по образцу `RpfFile.cs` из CodeWalker.
-Файл `src/magic.dat` взят из CodeWalker (`CodeWalker.Core/Resources/magic.dat`).
+Работа с форматом RPF в установщике сделана по образцу `RpfFile.cs` из CodeWalker.
+Файл `magic.dat` внутри установщика взят из CodeWalker (`CodeWalker.Core/Resources/magic.dat`).
 
 CodeWalker: Copyright (c) 2017-2019 dexyfex. Для этих частей в репозитории CodeWalker лицензия
 отдельно не указана, поэтому условия MIT выше к ним не относятся.
@@ -38,4 +38,4 @@ CodeWalker: Copyright (c) 2017-2019 dexyfex. Для этих частей в р�
 ## Инструменты сборки
 
 Текстуры сжимаются утилитой `texconv` из [DirectXTex](https://github.com/microsoft/DirectXTex)
-(Microsoft). В репозиторий и в установщик она не входит.
+(Microsoft). В установщик она не входит.
